@@ -1,0 +1,43 @@
+# Raspberry Pi settings. Only the differences from the defaults need to be listed.
+# Run with:  python main.py --config config_pi.yaml
+# Results are saved inside the project folder (output/). When an SSD is mounted, add these three settings:
+#   recording.clip_dir: /mnt/ssd/vivarium/clips   output.dir: /mnt/ssd/vivarium/output   logging.file: /mnt/ssd/vivarium/output/run.log
+
+source:
+  type: picamera
+
+video:
+  fps: 15
+  width: 1280
+  height: 720
+  process_width: 320
+  roi: [435, 55, 509, 512]        # cage floor in the 1280x720 frame, from tools/pick_roi.py. Redo it if the camera moves
+
+# Camera Module 3: fixed focus, exposure and white balance so the image never shifts by itself.
+# Tune lens_position (1 / distance in m), exposure_us and gain once for your cage and lighting,
+# then keep them identical for every animal. Check with: python tools/check_video.py --config config_pi.yaml
+picamera:
+  focus_mode: manual
+  lens_position: 3.3
+  exposure_us: 10000
+  gain: 4.0
+  awb: fixed
+  colour_gains: [2.0, 1.6]
+
+# Tuned for the ROI above (the analysed picture is now the cage, so the mouse looks about 2.5x bigger)
+detection:
+  min_area: 949
+
+movement:
+  speed_threshold: 20
+  min_move_sec: 2.0
+  min_still_sec: 1.5
+
+recording:
+  enabled: true
+  continuous: false
+
+output:
+  overlay_video: false
+  show_window: false
+

@@ -1,0 +1,50 @@
+# Raspberry Pi with a USB webcam instead of the Pi camera. Only the differences from the defaults are listed.
+# Run with:  python main.py --config config_pi_webcam.yaml
+#
+# Setup, once:
+#   1. sudo apt install -y v4l-utils
+#   2. Find the webcam:   ls -l /dev/v4l/by-id/        and       v4l2-ctl --list-devices
+#      Use the path that ends in "-video-index0" as source.usb_device below. (The Pi's own camera and the
+#      video decoder also appear as /dev/video*, so index 0 is often NOT the webcam.)
+#   3. What sizes and frame rates the webcam supports:   v4l2-ctl -d /dev/video0 --list-formats-ext
+#   4. python tools/check_video.py --config config_pi_webcam.yaml     (saves output/first_frame.jpg)
+#   5. python tools/pick_roi.py output/first_frame.jpg                (new camera = new ROI numbers)
+#      Paste the roi line below and use the min_area and speed_threshold it prints.
+
+source:
+  type: usb
+  usb_device: /dev/v4l/by-id/usb-046d_C270_HD_WEBCAM_09B4B560-video-index0   # Logitech C270 (index0 = video, index1 = metadata only)
+  usb_index: 0                     # used only when usb_device is null
+  usb_fourcc: MJPG                 # MJPG gives HD at full speed; YUYV is slow above 640x480; null = camera default
+
+video:
+  fps: 15
+  width: 1280                      # if the webcam cannot do this size, the log says what it really gives
+  height: 720
+  process_width: 320
+  roi: null                        # set it from tools/pick_roi.py, in pixels of the real frame size
+
+# Webcam image controls (Linux). null = leave the camera as it is. Auto exposure, auto focus and auto
+# white balance change the picture by themselves and look like movement, so for an experiment fix them,
+# for example: auto_exposure: false, exposure: 100 (1 unit = 0.1 ms, so 100 = 10 ms), autofocus: false,
+# auto_wb: false. Not every webcam supports every control: the log warns about the ones it refuses.
+usbcam:
+  auto_exposure: null
+  exposure: null
+  gain: null
+  autofocus: null
+  focus: null
+  auto_wb: null
+  wb_temperature: null
+
+movement:
+  min_move_sec: 2.0
+  min_still_sec: 1.5
+
+recording:
+  enabled: true
+  continuous: false
+
+output:
+  overlay_video: false
+  show_window: false

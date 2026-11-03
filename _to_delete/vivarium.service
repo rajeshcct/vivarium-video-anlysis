@@ -1,0 +1,29 @@
+# Auto-start the tracker on the Raspberry Pi.
+#
+# 1. Edit User and the paths below to match your Pi (default user "pi", project in /home/pi/vivarium-video).
+# 2. Install and start:
+#      sudo cp deploy/vivarium.service /etc/systemd/system/vivarium.service
+#      sudo systemctl daemon-reload
+#      sudo systemctl enable --now vivarium
+# 3. Watch it:        journalctl -u vivarium -f
+# 4. Stop it safely:  sudo systemctl stop vivarium     (clips and result files are closed properly)
+#
+# Every start creates a NEW session folder (timestamped), so nothing is overwritten.
+
+[Unit]
+Description=Vivarium mouse movement tracker
+After=network-online.target time-sync.target
+Wants=time-sync.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/vivarium-video
+ExecStart=/home/pi/vivarium-video/venv/bin/python main.py --config config_pi.yaml
+Restart=on-failure
+RestartSec=10
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

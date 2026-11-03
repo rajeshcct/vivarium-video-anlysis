@@ -1,0 +1,6 @@
+opencv-python>=4.8
+numpy>=1.24
+pyyaml>=6.0
+matplotlib>=3.7                # movement graphs (made automatically at the end of a session)
+# Raspberry Pi: do NOT pip install this file. Use the apt packages instead (see README.md section 1):
+#   sudo apt install -y python3-picamera2 python3-opencv python3-yaml python3-numpy python3-matplotlib

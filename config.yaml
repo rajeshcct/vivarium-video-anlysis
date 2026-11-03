@@ -1,0 +1,75 @@
+# Vivarium video: movement tracker configuration
+# Every setting lives here. Missing settings fall back to defaults in src/config.py.
+# Override any value from the command line:  --set detection.min_area=200
+
+source:
+  type: file                     # file | usb | picamera | rtsp
+  path: samples/MOUSE_crop.mp4   # used when type = file
+  usb_index: 0                   # used when type = usb
+  rtsp_url: ""                   # used when type = rtsp
+  loop: false                    # replay a file endlessly (needs session.max_duration_sec)
+  reconnect_attempts: 3          # live sources: retries if the camera drops
+  reconnect_wait_sec: 2
+
+video:
+  fps: auto                      # auto = use source fps, or a number (e.g. 15)
+  width: 640                     # camera capture size (usb / picamera only)
+  height: 480
+  process_width: 320             # frames are shrunk to this width for analysis (null = no resize)
+  rotate: 0                      # 0 | 90 | 180 | 270
+  roi: null                      # [x, y, w, h] in pixels: analyse only the cage area
+
+detection:
+  method: mog2                   # mog2 | fixed_background | frame_diff
+  history: 500                   # mog2: frames used to learn the background
+  var_threshold: 25              # mog2: lower = more sensitive
+  learning_rate: -1              # mog2: -1 = automatic, 0 = never update background
+  diff_threshold: 25             # fixed_background / frame_diff: pixel difference counted as change
+  background_image: null         # fixed_background: path to an image of the EMPTY cage
+  blur: 5                        # Gaussian blur kernel (odd number, 0 = off)
+  morph_kernel: 5                # noise removal kernel size
+  min_area: 150                  # smallest blob (at process size) accepted as the mouse
+  warmup_sec: 2                  # ignore the first seconds while the background is learned
+
+movement:
+  speed_threshold: 8             # px/s (at process size) above which the mouse counts as moving
+  speed_window_sec: 0.5          # speed is measured over this window (smooths jitter)
+  min_move_sec: 1.0              # movement must last at least this long to count as moving (shorter twitches = still)
+  min_still_sec: 0.5             # a pause shorter than this does not split a movement bout
+  jitter_px: 1.5                 # steps smaller than this are ignored in distance
+  px_per_cm: null                # pixels per cm at process size; null = report pixels only
+
+recording:
+  enabled: true                  # save motion-triggered clips
+  continuous: false              # true = record the whole session in one file
+  pre_buffer_sec: 4              # seconds saved BEFORE movement starts (0 = none)
+  post_buffer_sec: 5             # seconds saved AFTER movement stops (0 = none)
+  codec: mp4v
+  clip_dir: clips                # relative = inside the session folder; or an absolute path (e.g. SSD)
+  min_free_gb: 2                 # refuse to start recording if less disk space is free
+
+session:
+  id: auto                       # auto = cage_id + timestamp (file name when processing a folder)
+  cage_id: cage01
+  treatment_code: ""             # use a blinded code, not the drug name
+  max_duration_sec: null         # stop after this many seconds (null = until the source ends)
+
+output:
+  dir: output
+  save_frame_data: true          # per-frame x, y, speed
+  overlay_video: false           # save a video with tracked dot and MOVING / STILL label
+  show_window: false             # live preview, press q to stop (keep false on the Pi)
+  auto_graphs: true              # at the end of a session, save movement graphs (PNG, needs matplotlib)
+
+picamera:                        # only used when source.type = picamera (Camera Module 3)
+  focus_mode: manual             # none | manual | continuous  (autofocus hunting shifts the image = false motion)
+  lens_position: 3.3             # manual focus in dioptres = 1 / distance in metres (3.3 is about 30 cm)
+  exposure_us: null              # null = auto; or fixed, e.g. 10000 (use multiples of 10000 on 50 Hz mains)
+  gain: null                     # analogue gain used with fixed exposure (null = 2.0)
+  awb: auto                      # auto | fixed
+  colour_gains: [2.0, 1.6]       # [red, blue] used when awb = fixed; tune for your light
+
+logging:
+  level: INFO                    # DEBUG | INFO | WARNING | ERROR
+  file: output/run.log
+  health_interval_sec: 60        # log fps, dropped frames, CPU temp, free disk every N seconds (0 = off)
