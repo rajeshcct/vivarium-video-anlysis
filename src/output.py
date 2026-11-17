@@ -19,6 +19,7 @@ class SessionOutput:
             yaml.safe_dump(cfg, f, sort_keys=False)
 
         self._frames = None
+        self._mice = None
         self._n = 0
         if cfg["output"]["save_frame_data"]:
             self._ff = open(self.dir / "frame_data.csv", "w", newline="", encoding="utf-8")
@@ -38,6 +39,34 @@ class SessionOutput:
         if self._n % 100 == 0:
             self._ff.flush()
 
+    def add_mice(self, res):
+        """Per-mouse rows (only used when detection.n_mice > 1)."""
+        if not self.cfg["output"]["save_frame_data"]:
+            return
+        if self._mice is None:
+            self._mf = open(self.dir / "mice_data.csv", "w", newline="", encoding="utf-8")
+            self._mice = csv.writer(self._mf)
+            self._mice.writerow(["session_id", "t_s", "mouse_id", "x_px", "y_px", "found",
+                                 "speed_px_s", "moving", "from_split_blob"])
+        for m in res["mice"]:
+            self._mice.writerow([
+                self.meta["session_id"], round(res["t"], 3), m["id"],
+                "" if m["x"] is None else round(m["x"], 1),
+                "" if m["y"] is None else round(m["y"], 1),
+                int(m["found"]), round(m["speed"], 2), int(m["moving"]), int(m["merged"]),
+            ])
+        if self._n % 100 == 0:
+            self._mf.flush()
+
+    def write_mice_summary(self, summaries):
+        """summaries: list of per-mouse summary dicts -> mice_summary.csv"""
+        if not summaries:
+            return
+        with open(self.dir / "mice_summary.csv", "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=list(summaries[0].keys()))
+            w.writeheader()
+            w.writerows(summaries)
+
     def write_timeline(self, runs):
         with open(self.dir / "timeline.csv", "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
@@ -53,5 +82,7 @@ class SessionOutput:
             w.writerow(summary)
 
     def close(self):
+        if self._mice is not None:
+            self._mf.close()
         if self._frames is not None:
             self._ff.close()

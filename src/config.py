@@ -34,8 +34,16 @@ DEFAULTS = {
         "background_image": None,
         "blur": 5,
         "morph_kernel": 5,
-        "min_area": 150,
+        "close_kernel": 15,       # MORPH_CLOSE kernel – merges body + tail blob (px at process_width)
+        "min_area": 150,          # px² at process_width – smallest blob accepted as the mouse
+        "max_area": None,         # px² at process_width – blobs larger than this are ignored (None = no limit)
+        "min_solidity": 0.35,     # contourArea / convexHullArea – tail ≈ 0.15, body ≈ 0.5
+        "max_aspect": 4.0,        # bounding-rect long/short ratio – tail >> 4, body << 3
         "warmup_sec": 2,
+        "n_mice": 1,
+        "mouse_area": None,
+        "split_area_factor": 1.5,
+        "max_match_dist": 40,
     },
     "movement": {
         "speed_threshold": 8,
@@ -200,7 +208,23 @@ def validate(cfg, check_source_file=True):
     _check(isinstance(d["morph_kernel"], int) and d["morph_kernel"] >= 1,
            "detection.morph_kernel must be an integer >= 1")
     _check(_isnum(d["min_area"]) and d["min_area"] >= 0, "detection.min_area must be >= 0")
+    _check(d["max_area"] is None or (_isnum(d["max_area"]) and d["max_area"] > 0),
+           "detection.max_area must be null or > 0")
+    _check(isinstance(d["close_kernel"], int) and d["close_kernel"] >= 1,
+           "detection.close_kernel must be an integer >= 1")
+    _check(_isnum(d["min_solidity"]) and 0 < d["min_solidity"] <= 1,
+           "detection.min_solidity must be between 0 and 1")
+    _check(_isnum(d["max_aspect"]) and d["max_aspect"] >= 1,
+           "detection.max_aspect must be >= 1")
     _check(_isnum(d["warmup_sec"]) and d["warmup_sec"] >= 0, "detection.warmup_sec must be >= 0")
+    _check(isinstance(d["n_mice"], int) and not isinstance(d["n_mice"], bool) and d["n_mice"] >= 1,
+           "detection.n_mice must be a whole number >= 1")
+    _check(d["mouse_area"] is None or (_isnum(d["mouse_area"]) and d["mouse_area"] > 0),
+           "detection.mouse_area must be null (learn automatically) or > 0")
+    _check(_isnum(d["split_area_factor"]) and d["split_area_factor"] > 1,
+           "detection.split_area_factor must be > 1 (1.5 = a blob 1.5x one mouse is treated as two)")
+    _check(_isnum(d["max_match_dist"]) and d["max_match_dist"] > 0,
+           "detection.max_match_dist must be > 0 (pixels at process size)")
 
     _check(_isnum(m["speed_threshold"]) and m["speed_threshold"] >= 0, "movement.speed_threshold must be >= 0")
     _check(_isnum(m["speed_window_sec"]) and m["speed_window_sec"] > 0, "movement.speed_window_sec must be > 0")

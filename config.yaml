@@ -29,7 +29,15 @@ detection:
   blur: 5                        # Gaussian blur kernel (odd number, 0 = off)
   morph_kernel: 5                # noise removal kernel size
   min_area: 150                  # smallest blob (at process size) accepted as the mouse
+  max_area: 6000                 # blobs larger than this are cage shadows / artefacts (null = no limit)
+  min_solidity: 0.35             # contourArea / convexHullArea; tail ≈ 0.15, body ≈ 0.5-0.8
+  max_aspect: 4.0                # bounding-rect long/short ratio; tail >> 4, body << 3
+  close_kernel: 15               # MORPH_CLOSE kernel to merge body+tail before shape test (px)
   warmup_sec: 2                  # ignore the first seconds while the background is learned
+  n_mice: 1                      # how many mice are in the cage. 2 or more = multi-mouse tracking (see README section 11)
+  mouse_area: null               # n_mice > 1: area of ONE mouse at process size; null = learn automatically
+  split_area_factor: 1.5         # n_mice > 1: a blob this many times one mouse is split into two
+  max_match_dist: 40             # n_mice > 1: max px a mouse can move between frames and keep its ID
 
 movement:
   speed_threshold: 8             # px/s (at process size) above which the mouse counts as moving

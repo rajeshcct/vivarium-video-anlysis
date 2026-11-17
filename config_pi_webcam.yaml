@@ -22,7 +22,7 @@ video:
   width: 1280                      # if the webcam cannot do this size, the log says what it really gives
   height: 720
   process_width: 320
-  roi: null                        # set it from tools/pick_roi.py, in pixels of the real frame size
+  roi: [60, 115, 966, 591]         # cage floor in the 1280x720 frame (from your last session). Redo tools/pick_roi.py if the camera moves
 
 # Webcam image controls (Linux). null = leave the camera as it is. Auto exposure, auto focus and auto
 # white balance change the picture by themselves and look like movement, so for an experiment fix them,
@@ -37,7 +37,12 @@ usbcam:
   auto_wb: null
   wb_temperature: null
 
+detection:
+  n_mice: 2
+  min_area: 265
+
 movement:
+  speed_threshold: 11
   min_move_sec: 2.0
   min_still_sec: 1.5
 

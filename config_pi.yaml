@@ -1,43 +1,196 @@
-# Raspberry Pi settings. Only the differences from the defaults need to be listed.
-# Run with:  python main.py --config config_pi.yaml
-# Results are saved inside the project folder (output/). When an SSD is mounted, add these three settings:
-#   recording.clip_dir: /mnt/ssd/vivarium/clips   output.dir: /mnt/ssd/vivarium/output   logging.file: /mnt/ssd/vivarium/output/run.log
+# ============================================================
+# Raspberry Pi Zero 2W  –  Two dark mice, wood-chip bedding
+# Pi camera points at a LAPTOP SCREEN playing the mouse video.
+#
+# TWO MODES — change only the 3 marked lines to switch:
+#
+#   MODE A ─ SCREEN TEST  (now)
+#     Pi camera watches a laptop screen playing the video.
+#     mog2 learns the background from whatever it sees.
+#     No reference image needed.
+#
+#   MODE B ─ REAL CAGE  (later, actual experiment)
+#     Pi camera mounted above the real cage.
+#     fixed_background uses an empty-cage reference photo.
+#     Capture reference:
+#       python tools/capture_background.py --config config_pi.yaml
+#
+# FIRST TIME SETUP:
+#   1. Run:  python tools/check_video.py --config config_pi.yaml
+#   2. Open output/first_frame_annotated.jpg
+#      Green box = ROI, Yellow text = scale info
+#   3. Set roi below using the pixel coordinates you read
+#
+# ALL area / speed thresholds are in PROCESS pixels (320 px wide),
+# NOT in capture pixels (1280 px wide).
+# ============================================================
 
 source:
   type: picamera
+  reconnect_attempts: 5         # auto-recover if the camera cable is bumped
+  reconnect_wait_sec: 3         # seconds to wait between reconnect attempts
 
 video:
-  fps: 15
-  width: 1280
-  height: 720
-  process_width: 320
-  roi: [435, 55, 509, 512]        # cage floor in the 1280x720 frame, from tools/pick_roi.py. Redo it if the camera moves
+  fps: 10                       # 10 fps keeps Pi Zero 2W CPU under 70%
+                                # increase to 15 only if CPU headroom allows
+  width: 1280                   # Pi camera capture size — ROI [x,y,w,h] must be in
+  height: 720                   # these coordinates (1280×720), NOT process_width
+  process_width: 320            # frame is resized to this width for all analysis
+                                # all area/speed values below are in 320-px-wide pixels
+  rotate: 0                     # set to 180 if the camera image is upside-down
+  roi: null                     # [x, y, w, h] in 1280×720 capture pixels
+                                # SET THIS after check_video.py:
+                                #   open output/first_frame.jpg in Paint
+                                #   hover over the top-left corner of cage → note x, y
+                                #   hover over bottom-right corner → width = x2-x, height = y2-y
+                                #   example:  roi: [120, 60, 900, 580]
 
-# Camera Module 3: fixed focus, exposure and white balance so the image never shifts by itself.
-# Tune lens_position (1 / distance in m), exposure_us and gain once for your cage and lighting,
-# then keep them identical for every animal. Check with: python tools/check_video.py --config config_pi.yaml
+# ── Pi Camera Module 3 controls ──────────────────────────────────────────
+# Lock ALL auto-controls so the image never drifts by itself.
+# A shifting exposure or white-balance looks like motion → false detections.
 picamera:
-  focus_mode: manual
-  lens_position: 3.3
-  exposure_us: 10000
-  gain: 4.0
-  awb: fixed
-  colour_gains: [2.0, 1.6]
+  focus_mode: manual            # never: none  |  set once: manual  |  hunting: continuous
+                                # use manual — continuous autofocus = image shifts = false motion
+  lens_position: 2.0            # 1 / distance_in_metres to subject
+                                # screen test: screen is ~50 cm away → 1/0.5 = 2.0
+                                # real cage:   cage floor ~30 cm away → 1/0.3 = 3.3
+                                # adjust until first_frame.jpg looks sharp
+  exposure_us: 20000            # fixed shutter speed in microseconds
+                                # screen test: screen is bright → 20000 (20 ms)
+                                # real cage:   dim LED light  → 15000 or 10000
+                                # use multiples of 10000 to avoid 50 Hz flicker bands
+  gain: 1.5                     # analogue sensor gain
+                                # screen test: screen is self-lit → 1.5
+                                # real cage:   dim cage light → 3.0–4.0
+                                # raise if image is too dark, reduce if washed out
+  awb: fixed                    # auto white-balance = colour shifts = false motion → keep fixed
+  colour_gains: [1.8, 1.4]      # [red, blue] multipliers
+                                # screen test starting point: [1.8, 1.4]
+                                # real cage starting point:   [2.0, 1.6]
+                                # tune until white bedding looks white in first_frame.jpg
 
-# Tuned for the ROI above (the analysed picture is now the cage, so the mouse looks about 2.5x bigger)
+# ── Detection ────────────────────────────────────────────────────────────
 detection:
-  min_area: 949
 
+  # ── MODE SWITCH ─── change these 3 lines to switch between modes ────────
+  method: mog2                  # MODE A screen test: mog2
+                                # MODE B real cage:   fixed_background
+  background_image: samples/background_pi.jpg
+                                # MODE A: ignored (mog2 learns from live frames)
+                                # MODE B: empty-cage photo taken BY THE PI CAMERA
+                                #   capture it: python tools/capture_background.py
+  warmup_sec: 8                 # MODE A mog2:            8 s to learn screen background
+                                # MODE B fixed_background: 0 (reference is pre-loaded)
+  # ────────────────────────────────────────────────────────────────────────
+
+  # Background subtractor settings (mog2 mode)
+  history: 200                  # frames used to build the background model
+                                # screen is very stable → 200 is enough
+                                # real cage with active mice → 300–500
+  var_threshold: 18             # sensitivity: lower = detects more (more noise too)
+                                # dark mice on bright screen/bedding → 18 is good
+                                # raise to 25–30 if shadows cause false detections
+  learning_rate: 0.001          # how fast the background model updates (0=never, 1=every frame)
+                                # 0.001 = very slow → still mouse won't be absorbed into background
+                                # set to 0 if a resting mouse disappears after a few minutes
+
+  # Foreground image cleanup
+  diff_threshold: 20            # pixel difference to count as foreground (fixed_background mode)
+                                # not used by mog2, but kept here for quick mode switching
+  blur: 5                       # Gaussian blur kernel before detection (must be odd: 3,5,7)
+                                # reduces camera noise; 5 is a good default
+  morph_kernel: 5               # small noise removal after thresholding (px at process_width)
+                                # removes dust / compression artefacts
+  close_kernel: 18              # fills gap between mouse body and tail blob (px at process_width)
+                                # 18 px at 320 wide = ~29 px at 1280 capture size
+                                # increase to 22–25 if tail still appears as a separate blob
+
+  # Blob size filters  — ALL in PROCESS pixels (320 px wide) ──────────────
+  min_area: 200                 # smallest blob accepted as a mouse (px²)
+                                # screen test: mice look smaller on screen → 200
+                                # real cage:   full-size mice                → 600
+                                # HOW TO TUNE: run once, open frame_data.csv,
+                                #   look at the 'area' column when mouse is visible
+                                #   set min_area to ~half that typical value
+  max_area: 5000                # largest blob accepted as a mouse (px²)
+                                # a blob bigger than this = two mice touching, or a shadow
+                                # set to ~3× the area of one mouse you measured above
+  min_solidity: 0.30            # contour area ÷ convex hull area
+                                # compact mouse body → 0.5–0.8  (passes)
+                                # thin tail blob   → 0.1–0.2  (rejected)
+                                # lower only if a curled-up mouse gets rejected
+  max_aspect: 4.5               # bounding box long_side ÷ short_side
+                                # mouse body → 1–2.5  (passes)
+                                # tail blob  → 5–15   (rejected)
+                                # raise only if a very stretched mouse gets rejected
+
+  # Multi-mouse settings
+  n_mice: 2                     # number of mice in the cage
+  max_match_dist: 60            # max px a mouse can jump between frames and keep its ID
+                                # at 10 fps a mouse moving at ~6 px/frame = 60 px/s
+                                # increase if identity swaps between frames
+
+# ── Movement classification ───────────────────────────────────────────────
 movement:
-  speed_threshold: 20
-  min_move_sec: 2.0
-  min_still_sec: 1.5
+  speed_threshold: 15           # px/s at process_width=320  — above this = MOVING
+                                # screen test: start at 15, tune by watching overlay
+                                # real cage:   start at 15, raise if grooming = false MOVING
+  speed_window_sec: 0.6         # speed is averaged over this window (seconds)
+                                # longer = smoother speed, less twitchy
+  min_move_sec: 1.5             # a movement must last at least this long to count
+                                # 1.5 s × 10 fps = 15 frames minimum
+                                # raise if brief grooming/twitches are counted as moving
+  min_still_sec: 1.0            # a pause shorter than this does NOT split a moving bout
+                                # 1.0 s = a brief stop inside a walking bout is ignored
+  jitter_px: 2.0                # centroid steps smaller than this are ignored in distance
+                                # at 10 fps a pixel or two of centroid noise is normal
+  px_per_cm: null               # set this to convert px measurements to real-world cm
+                                # HOW TO MEASURE: put a ruler in the cage (or on screen),
+                                #   run check_video.py, open first_frame.jpg, count
+                                #   how many PROCESS pixels span 1 cm on the ruler
+                                #   example: 12 px = 1 cm → px_per_cm: 12
 
+# ── Clip recording ───────────────────────────────────────────────────────
 recording:
-  enabled: true
-  continuous: false
+  enabled: true                 # true = save motion-triggered clips
+                                # set false during screen tests to save Pi resources
+  continuous: false             # false = only save clips when mouse is moving
+                                # true  = record the entire session in one file
+  pre_buffer_sec: 5             # seconds to keep BEFORE movement starts
+                                # these frames are held in RAM (5 s × 10 fps = 50 frames)
+  post_buffer_sec: 6            # seconds to keep AFTER movement stops
+  codec: mp4v                   # video codec for clip files
+  clip_dir: clips               # folder for clips — relative = inside session folder
+                                # for a USB drive: /mnt/usb/clips
+  min_free_gb: 1                # refuse to record if less than this much disk space is free
+                                # Pi SD cards fill up fast — keep this at 1 GB minimum
 
+# ── Session ──────────────────────────────────────────────────────────────
+session:
+  id: auto                      # auto = cage_id + timestamp (recommended)
+                                # or set a fixed name: id: pilot_run_01
+  cage_id: cage01               # change for each cage
+  treatment_code: ""            # use a blinded code (e.g. T1, T2) NOT the drug name
+  max_duration_sec: null        # null = run until Ctrl+C
+                                # set a number to auto-stop: 3600 = 1 hour
+
+# ── Output files ─────────────────────────────────────────────────────────
 output:
-  overlay_video: false
-  show_window: false
+  dir: output                   # session folders are created inside here
+  save_frame_data: true         # saves frame_data.csv (t, x, y, speed per frame)
+                                # set false to reduce disk writes on slow SD cards
+  overlay_video: false          # KEEP FALSE on Pi Zero 2W
+                                # encoding an overlay video costs ~30% extra CPU
+                                # generate it on the laptop from frame_data.csv instead
+  show_window: false            # no screen on headless Pi — always false
+  auto_graphs: false            # matplotlib is heavy; run tools/summarize.py on
+                                # the laptop after copying the output folder
 
+# ── Logging ──────────────────────────────────────────────────────────────
+logging:
+  level: INFO                   # DEBUG = very verbose (use for first run to check detection)
+                                # INFO  = normal running
+                                # WARNING = quiet (errors only)
+  file: output/run.log
+  health_interval_sec: 30       # every 30 s: log FPS, CPU temp, free disk
+                                # watch for CPU temp > 80°C = thermal throttling on Zero 2W

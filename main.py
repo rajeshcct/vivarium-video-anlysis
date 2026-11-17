@@ -19,7 +19,7 @@ from pathlib import Path
 import cv2
 
 from src.config import ConfigError, load_config, validate
-from src.detector import MotionDetector, draw_overlay
+from src.multi_tracker import make_detector, draw_overlay
 from src.output import SessionOutput
 from src.recorder import ClipRecorder
 from src.source import make_source
@@ -97,6 +97,7 @@ def run_session(cfg):
 
     detector = recorder = overlay = None
     rows, last_t = [], 0.0
+    mice_rows = {}                      # mouse_id -> per-frame rows (only when detection.n_mice > 1)
     prev_t, dropped, n_frames = None, 0, 0
     live = cfg["source"]["type"] != "file"
     health_iv = cfg["logging"]["health_interval_sec"]
@@ -118,7 +119,7 @@ def run_session(cfg):
             n_frames += 1
 
             if detector is None:
-                detector = MotionDetector(cfg, frame.shape)
+                detector = make_detector(cfg, frame.shape)
                 if cfg["recording"]["enabled"]:
                     h, w = frame.shape[:2]
                     recorder = ClipRecorder(cfg, source.fps, (w, h), out.dir)
@@ -126,6 +127,11 @@ def run_session(cfg):
             res = detector.process(frame, t)
             rows.append((t, res["x"], res["y"], res["found"], res["speed"], res["moving"]))
             out.add_frame(res)
+            if "mice" in res:
+                out.add_mice(res)
+                for m in res["mice"]:
+                    mice_rows.setdefault(m["id"], []).append(
+                        (t, m["x"], m["y"], m["found"], m["speed"], m["moving"]))
             if recorder:
                 recorder.update(frame, t, res["moving"])
 
@@ -182,6 +188,20 @@ def run_session(cfg):
     summary = summarize(rows, runs, cfg, meta)
     out.write_timeline(runs)
     out.write_summary(summary)
+
+    if mice_rows:
+        per_mouse = []
+        for mid in sorted(mice_rows):
+            mr = mice_rows[mid]
+            m_runs = merge_short(frames_to_runs([r[0] for r in mr], [r[5] for r in mr]),
+                                 cfg["movement"]["min_move_sec"], cfg["movement"]["min_still_sec"])
+            m_meta = dict(meta)
+            m_meta["mouse_id"] = mid
+            per_mouse.append(summarize(mr, m_runs, cfg, m_meta))
+            log.info("Mouse %d: moving %.0fs (%.1f%%) | bouts %d | found in %.1f%% of frames",
+                     mid, per_mouse[-1]["moving_sec"], per_mouse[-1]["pct_moving"],
+                     per_mouse[-1]["moving_bouts"], per_mouse[-1]["mouse_found_pct"])
+        out.write_mice_summary(per_mouse)
 
     log.info("Done: total %.0fs | moving %.0fs (%.1f%%) | still %.0fs | bouts %d | mouse found in %.1f%% of frames",
              summary["session_sec"], summary["moving_sec"], summary["pct_moving"],
